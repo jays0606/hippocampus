@@ -1,17 +1,41 @@
-# Hippocampus — Hackathon Final Spec (v2)
+# Hippocampus — Hackathon Final Spec (v3)
 
 *Voice-first on-device memory for people whose own is slipping.*
+
+**Positioning (read before every rehearsal):** Hippocampus is a **memory prosthesis** — a hearing aid for a failing hippocampus. It does **not** cure, treat, reverse, or slow Alzheimer's. Nothing currently does. What it does is externalize the function the damaged organ can no longer perform: remembering what was where, when, and with whom. The prosthesis metaphor is load-bearing for regulatory clarity (durable medical equipment reimbursement template), for clinical legitimacy (clinicians understand prosthetics intuitively), and for legal safety (we never make a treatment claim). The opening line *"so we built her a new one"* is a metaphor for the prosthesis; the Q&A (Part 14, Q8) pins this down explicitly the moment a judge probes.
+
+**Ground truth (verified at H-1 against `cactus_docs/react-native.md` and the working sibling repo `../military-medic/MedicApp`):**
+
+- SDK surface: `cactus-react-native ^1.13.0`. Model slug **`gemma-4-e2b-it`** (lowercase, no namespace). Model download size **4.68 GB** (not 1.5 GB as earlier drafts assumed). Peak RAM ~1.4–1.9 GB for the LM alone; add ~300 MB for Whisper-small + Silero-VAD → ~2.2 GB concurrent.
+- `options: { quantization: 'int4', pro: true }` is required to get the NPU-accelerated `-int4-apple.zip` weights on iPhone 17 Pro. Without `pro: true` you fall back to CPU prefill — measurably slower, breaks the sub-second pitch.
+- **cactus-react-native v1.13.0 has two show-stopper bugs that prevent Gemma 4 E2B from downloading with `pro: true`.** Fix: copy `/Users/jaehoshin/personal/military-medic/MedicApp/patches/cactus-react-native+1.13.0.patch` verbatim into `MedicApp/patches/` and run `patch-package` postinstall. This bumps `RUNTIME_VERSION` to `1.14.0` so the `-int4-apple` tag resolves, and accepts models that ship only `int4` (Gemma 4 E2B/E4B) instead of requiring both `int4` and `int8`. **Do this at H0 before any other RN work.**
+- `toolRagTopK` confirmed as a real `complete()` option (default 2). The SPEC's reliance on `toolRagTopK: 6` is correct.
+- **Two defaults that silently violate "airplane mode" and MUST be overridden on every `complete()` and `transcribe()` call:**
+  - `telemetryEnabled: true` → set to `false`. Otherwise the SDK posts usage telemetry on generation completion, and our network HUD will show outbound bytes.
+  - `confidenceThreshold: 0.7` → set to `0`. This is the cloud-handoff threshold. At default, any low-confidence turn may trigger a cloud call — our "nothing leaves the phone" claim becomes false on a single unlucky prompt.
+- Vision (`messages[].images: [path]`) is documented only for `lfm2-vl-450m` in the RN docs; Gemma 4 E2B vision via RN is **unverified in both docs and in any working codebase we have access to**. This is the single highest project risk. H0 verification must empirically test it with a file URI, or Beats 1/2 drop to pre-seeded fallback.
+- Audio-in to Gemma 4 in a single `complete()` call is supported by the native Swift/Apple SDK (`messages[].audio: [path]`) but **not exposed by the RN JS wrapper** — `CactusLMMessage` only has `role`, `content`, `images`. STT → text → LM remains the correct RN pipeline. Writing a native bridge to expose audio-in is ~3h of work we are not spending.
+- `lm.prefill({ messages: [system], tools })` is a real method — call once at startup to warm the KV cache so the first user turn doesn't pay the system-prompt prefill cost. MedicApp uses this pattern and we should copy it.
+- Use streaming STT (`streamTranscribeStart/Process/Stop`), not batch `transcribe()`, so confirmed tokens can flow to Gemma before the user finishes speaking.
 
 **Event**: Gemma 4 Voice Agents Hackathon · YC HQ · Apr 18–19, 2026
 **Submission**: Sun 11am · **Demo**: 1pm judging · 90 seconds on stage
 **Stack**: iPhone 17 Pro · Gemma 4 E2B · Cactus SDK (React Native) · No cloud
 **Team**: 3–4 engineers · ~22 working hours to submission
 
+**v3 changes from v2 (pitch pass for YC judges):**
+- Rewrote the opening — the product's name is now the *first word spoken*, not a slide reveal after 15 seconds of setup
+- **Positioned the product neurologically, not consumer-ly.** Every beat now escalates within a dementia frame: small fear (glasses → "the floor moves") → daily dread (pills) → existential grief (Margaret). The wedge is dementia caregivers; the TAM expands down-severity-curve to 70M with any memory impairment.
+- Replaced Beat 3 (daily digest) with **the Margaret moment** — the emotional climax that showcases profile-driven behavior, the one feature no cloud product can copy
+- Added neurological framing to Beat 1 (glasses → "the floor moves") so it stops reading as an Alexa flex and starts reading as a dementia-aware memory aid
+- Tightened the close to one competitor (Microsoft Recall) and one number (70M Americans); cut the triple-stat pile-up
+- Added `compose_daily_digest` to the H10 cut list (no longer demo-critical)
+
 **v2 changes from v1:**
 - Added caregiver-authored profile (§6) — meds, symptoms, doctors, family, triggers
 - Clarified image lifecycle and when disk writes happen (§7)
 - Reduced cron list to the two that run in MVP (§8)
-- Revised Beat 3 to a single-device voice-only digest (§3)
+- Revised Beat 3 to a single-device voice-only digest (§3) — *superseded in v3*
 - Added team-alignment section for persuading co-founders (§P at end)
 
 ---
@@ -22,13 +46,17 @@
 
 Founder walks on stage. No smile. Holds up an iPhone.
 
-> *"My grandmother asks my mother 'did I take my pills?' six times every day. My mother answers six times every day. By dinner, neither of them remembers the conversation.*
+> *"The hippocampus is the part of the brain that fails first in Alzheimer's."*
 >
-> *Fifteen million Americans live this loop."*
+> *"My grandmother's is failing. She asks my mother 'did I take my pills?' six times a day. My mother answers six times a day. By dinner, neither of them remembers the conversation."*
+>
+> *"So we built her a new one."*
 
 Pause. Slide: **Hippocampus.**
 
-> *"Named after the part of the brain that fails first in Alzheimer's. We built the digital version. It runs on her phone. It never touches the cloud. Watch."*
+> *"It runs on her phone. It never touches the cloud. Watch."*
+
+**Why this opens the way it does.** The product name is the *first word of the pitch* — it earns its meaning (a failing brain region) before it earns its slide. There is no stat in the opening: numbers go in the close, where the judge has already decided they care. "So we built her a new one" is the line the room remembers on the walk to lunch.
 
 ---
 
@@ -41,7 +69,7 @@ Pause. Slide: **Hippocampus.**
 - App running. The vision loop has been observing the table for 30 min. `memory.db` contains real entries: *mug placed 12:15, keys placed 12:33, pill_bottle tipped+drunk 12:40 (event: kind=med_taken, certainty=observed), glasses placed 1:02.*
 - Caregiver profile file loaded at app launch — *"Helen, 79, mid-stage Alzheimer's, takes Donepezil 10mg at 8am, daughter Sarah, late sister Margaret (do not confuse)."*
 
-### Beat 1 — Spatial recall (20s)
+### Beat 1 — Spatial recall (25s)
 
 Founder picks up the glasses, walks two steps, sets them on a chair behind him. Walks back. Doesn't touch the phone.
 
@@ -51,7 +79,9 @@ Sub-second. Hippo's premium voice:
 
 > *"On the chair behind you. You set them there eight seconds ago."*
 
-Room reacts. Founder hasn't touched the screen.
+Room reacts. Founder hasn't touched the screen. He turns to the audience, doesn't break stride:
+
+> *"For you and me, losing our glasses is annoying. For my grandmother, it's the moment the floor moves — she thinks the disease just took another piece of her. Hippocampus watched. So she doesn't have to be afraid."*
 
 ### Beat 2 — The meds moment (20s)
 
@@ -65,39 +95,47 @@ One-second silence. Then:
 
 > *"This is the answer my grandmother needs six times a day. Not an alarm. Not a reminder. An answer — from someone who was watching."*
 
-### Beat 3 — The digest and the family bridge (20s)
+### Beat 3 — The Margaret moment (25s)
 
-Founder to the room:
+Founder softens. Speaks to the phone like he's speaking for his grandmother — slightly slower, a shade quieter.
 
-> *"Hey Hippo — what happened today?"*
+> *"Hey Hippo — is Margaret coming today?"*
 
-Hippo speaks a 15-second summary:
+No delay. Hippo's voice, warm and even:
 
-> *"Today you took your morning pills at 12:40. You asked about your glasses twice. You've been calm. No visitors. Nothing left on the stove."*
+> *"Not today, Helen. But Sarah's going to call you tonight. Would you like to hear some Chopin?"*
 
-Founder to audience:
+Founder lets the silence sit for a full second. Then, to the room:
 
-> *"This is the digest her daughter hears from me every evening. No video. No transcript of what Mom said. Just the facts. The peace of mind goes to her daughter. Mom's life stays with Mom."*
-
-Founder gestures to the network HUD on the laptop.
-
-> *"Everything you just heard ran in airplane mode. Gemma 4 on Cactus. On-device. Zero bytes out. Not because we chose privacy as a feature — because we built the architecture that makes every other choice impossible."*
-
-### Why Beat 3 is single-device now (diff from v1)
-
-v1 had a second phone showing a notification. v2 has Hippo speaking the digest directly. Reasons:
-- Voice-first throughout (no screen touches, no phone pickups)
-- One device = cleaner narrative in judges' minds
-- Removes the BLE/fake-sync surface entirely — less to defend under questioning
-- Pitch line carries the TAM expansion: *"this is what her daughter hears every evening"* — implies two-device system without having to prove it on stage
-
-### Close (15s)
-
-> *"Microsoft tried to ship a memory layer last year. They called it Recall. They killed it twice because they built it in the cloud. We built it where a memory belongs — on the device in her pocket.*
+> *"Margaret was Helen's sister. She passed in 2019. Helen still asks, most afternoons."*
 >
-> *Seventy million Americans live with some form of memory impairment. Their families spend two hundred sixty billion dollars a year trying to help. Nothing today actually remembers for them. We do.*
+> *"We never taught Hippocampus to lie. Her daughter wrote one line in a profile file — 'don't confirm, redirect gently.' The device follows it."*
+
+Founder turns to the network HUD on the laptop.
+
+> *"And because nothing — nothing — ever leaves this phone, her daughter is the only person on earth who knows her mother still asks."*
+
+### Why Beat 3 is the Margaret moment (diff from v2)
+
+v1 had a second phone. v2 had a spoken daily digest. v3 replaces both with the single line in the profile that tells Hippo how to handle a dead sister. Reasons:
+
+- **Pills is table stakes; Margaret is memorable.** Every judge in the room has seen an AI pill reminder demo before. Zero of them have seen an AI handle grief with restraint. This is the beat screenshot-and-quoted on Monday morning.
+- **It demos the one feature no cloud product can copy.** The confusion_notes → system prompt pipeline *is* the moat. Recall can't ship this. Alexa can't ship this. Only a device that holds private clinical context locally can.
+- **It makes "on-device" emotionally load-bearing, not a checkbox.** The reason nothing leaves the phone isn't performance or GDPR — it's that Helen's dead sister is no one else's business. The airplane-mode HUD finally *means* something.
+- **It carries the TAM expansion through implication, not staging.** "Her daughter is the only person on earth who knows her mother still asks" telegraphs the caregiver-as-buyer story without needing a second device or BLE hack.
+- **It's cheaper to build.** No digest generator, no 15-second summary logic. Just confusion_notes in the system prompt — already on the critical path.
+
+### Close (20s)
+
+> *"Microsoft tried to ship a memory layer last year. They called it Recall. They killed it twice — because they built it in the cloud."*
 >
-> *Hippocampus. Thank you."*
+> *"We built it where a memory belongs: on the device in her pocket."*
+>
+> *"Seventy million Americans are losing theirs. Medicare already pays fifty dollars a month to keep them home instead of in a nursing facility. We bill the insurer. Grandma keeps her life."*
+>
+> *"Hippocampus. Thank you."*
+
+**Why this close over v2.** The Medicare line is not a tangent — it's the line that turns "sad demo about grandma" into "$4B ARR with a built-in payer." YC partners fund the second one. The number is defensible: CPT codes 99453–99458 reimburse $50–160/patient/month for Remote Patient Monitoring, and RPM billing requires a written care plan, which our profile file literally is. Say it in the pitch, not the Q&A — by Q&A the judge has already decided.
 
 ---
 
@@ -115,8 +153,10 @@ v1 had a second phone showing a notification. v2 has Hippo speaking the digest d
 - Pre-seeded memory from 30-min pre-demo observation
 - Six memory tools (spec'd below)
 - Docked mode — always-on listening while on MagSafe
-- Network HUD on demo laptop
-- Spoken digest (generated from `memory.db` + profile, voice only)
+- Network HUD on demo laptop (Little Snitch network map — zero bytes visible)
+- **Technical HUD on demo laptop (second window)** — live `ramUsageMb`, tokens/sec, single-pass modality breakdown per turn. Makes the on-device feat *visible* to DeepMind judges. ~2h in Workstream E.
+- **Caregiver view** — single static HTML file generated from `memory.db` at end of demo. Opened on laptop for 3 seconds during close. Shows "what Sarah sees tonight." No backend, no sync. ~2h in Workstream E.
+- Spoken digest tool — *cut in v3*, demo uses Margaret beat instead
 
 ### OUT for MVP (roadmap)
 
@@ -135,14 +175,15 @@ v1 had a second phone showing a notification. v2 has Hippo speaking the digest d
 ### Cut list if behind at H10 (in order)
 
 1. Live vision writing memory → pre-seed completely (saves 4h)
-2. `describe_current_scene` tool → cut (saves 1h)
-3. `forget_last_minutes` tool → stub (saves 30m)
+2. `compose_daily_digest` tool → cut entirely (saves 1h) — no longer demo-critical after v3's Margaret beat replaced the digest on stage
+3. `describe_current_scene` tool → cut (saves 1h)
+4. `forget_last_minutes` tool → stub (saves 30m)
 
 ### Do not cut under any circumstance
 
 - Voice I/O pipeline
 - `memory.db` + four query tools
-- Caregiver profile loader
+- **Caregiver profile loader — the Margaret beat depends entirely on `confusion_notes` being wired into the system prompt. If profile loading breaks, Beat 3 becomes a generic chatbot response and the demo collapses.**
 - Gemma 4 E2B voice response
 - Network HUD + airplane mode
 - The three demo beats
@@ -354,10 +395,11 @@ t=500ms   IF we wrote a memory entry AND the frame is referenced:
 - `admin_profile.json` — ~2 KB
 - `memory.db` — ~100 KB after 30min of observation
 - `Documents/frames/*.jpg` — ~10 frames × 80 KB = 800 KB (only the ones referenced by memory entries)
-- Gemma 4 E2B weights cache — ~1.5 GB
-- Whisper / Silero cache — ~200 MB
+- Gemma 4 E2B weights cache — **~4.7 GB** (verified against the working MedicApp download — earlier SPEC drafts assumed 1.5 GB, wrong)
+- Whisper-small + Silero VAD caches — ~300 MB
+- lfm2-vl-450m (contingency vision model, loaded only if Part 13 item 3 fails) — ~300 MB
 
-Total disk ~2 GB, all local, nothing syncs.
+Total disk ~5.5 GB in the happy path, ~5.8 GB if vision fallback is active. All local, nothing syncs.
 
 ---
 
@@ -433,13 +475,24 @@ CREATE TABLE meds_schedule (
 
 ## Part 10 — Tool schema (final, 6 tools)
 
-Gemma 4 E2B native function calling via `CactusLM.complete({ messages, tools, toolRagTopK: 6 })`.
+Gemma 4 E2B native function calling. **Every `complete()` call uses exactly these options — the three flags after `tools` are load-bearing** (the first two keep us in airplane mode, the third keeps all tools visible to the model):
 
-**`toolRagTopK: 6` is load-bearing** — the RN SDK default is 2, which picks the two embedding-closest tools and silently hides the rest. Without this override, `query_meds_today` can vanish from the tool list on a prompt the embedding happens to score lower. Pass all six every turn.
+```typescript
+await cactusLM.complete({
+  messages,
+  tools: HIPPO_TOOLS,
+  toolRagTopK: 6,              // RN default is 2; without this, 4 tools silently hide
+  telemetryEnabled: false,     // RN default is true → posts usage telemetry. DISABLES AIRPLANE MODE.
+  confidenceThreshold: 0,      // RN default is 0.7 → may trigger cloud handoff on low-confidence turns
+  onToken,
+});
+```
 
-**Contingency if Gemma 4 E2B tool calling is unreliable on Cactus RN** (to be verified at H0): switch to a two-model setup — FunctionGemma-270m as router emitting the tool call, Gemma 4 E2B as responder composing natural language. Weights for both are already cached. Do not discover this at H10.
+The same two flags apply to `CactusSTT.transcribe()` and `streamTranscribe*()` — they also default to `telemetryEnabled: true` and have their own `cloudHandoffThreshold`. Ship a single options constant shared across every SDK call so we cannot forget one.
 
-No web RAG. No router model in the happy path.
+**Contingency if Gemma 4 E2B tool calling is unreliable on Cactus RN** (must be settled at H0, not H10): switch to a two-model setup — FunctionGemma-270m as router emitting the tool call, Gemma 4 E2B as responder composing natural language. Weights for both are already cached. The sibling repo `../military-medic/tool_test.py` already runs this head-to-head comparison against four real tools — reuse its scoring logic to pick the path at H1.
+
+No web RAG. No cloud handoff. No router model in the happy path.
 
 ```typescript
 export const HIPPO_TOOLS = [
@@ -536,7 +589,7 @@ RULES:
 | **A** | Voice I/O — STT + VAD + TTS + mic gating | 1 eng | 4h | Audio in → confirmed transcript. Streaming response → premium TTS. Mic pauses while speaking. Zero echo. |
 | **B** | Perception writer — vision → memory | 1 eng | 5h | Camera 2fps → SSIM change-detect → Gemma 4 scene tag → memory.db writes. |
 | **C** | Memory store + 6 tools | 1 eng | 3h | `memory.db` schema created. All 6 tools return correct data. Merge rules unit-tested. |
-| **D** | Voice agent core — Gemma 4 E2B loader + tool loop (`toolRagTopK: 6`) + system prompt + **profile loader** | 1 eng | 6h | Gemma 4 E2B loaded via `CactusLM` RN. Profile JSON parsed into prompt + seeded into memory.db. Full STT → `complete()` → tool call → tool response → follow-up `complete()` → `react-native-tts` voice-out loop running. **H0 smoke test: confirm `functionCalls` fires and `images` works on Gemma 4 E2B; if tool calling is unreliable, pivot to FunctionGemma-270m router.** **Assign strongest engineer.** |
+| **D** | Voice agent core — Gemma 4 E2B loader + tool loop (`toolRagTopK: 6`, `telemetryEnabled: false`, `confidenceThreshold: 0`) + system prompt + **profile loader** + `prefill()` warm-start | 1 eng | 6h | **H0 (first 30 min): apply `../military-medic/MedicApp/patches/cactus-react-native+1.13.0.patch`; verify `{ quantization: 'int4', pro: true }` downloads and `init()` succeeds.** Then Gemma 4 E2B loaded via `CactusLM` RN. Profile JSON parsed into prompt + seeded into memory.db. Full streaming-STT → `complete()` → tool call → tool response → follow-up `complete()` → `react-native-tts` voice-out loop running. Shared options constant (`telemetryEnabled: false, confidenceThreshold: 0`) threaded through every SDK call. **H0 smoke tests: confirm `functionCalls` fires and `images: [path]` works on Gemma 4 E2B; if tool calling is unreliable, pivot to FunctionGemma-270m router; if vision fails, load `lfm2-vl-450m` as the scene-tag model and pipe JSON into Gemma.** **Assign strongest engineer.** |
 | **E** | Demo UI + network HUD + docked mode | 1 eng | 3h | App foregrounds on dock. LISTENING animation. HUD shows zero bytes. Airplane mode verified. |
 | **F** | Profile authoring + pitch deck + rehearsal support | folded into D or separate | 1h | `admin_profile.json` authored for demo. Opening + closing memorized. |
 
@@ -570,17 +623,131 @@ RULES:
 
 ---
 
-## Part 13 — Verification items (clear by H2)
+## Part 13 — Verification items (clear by H2, artifacts committed)
 
-Each item must produce a real artifact (log line, screenshot, or commit) before H2 closes.
+Each item must produce a real artifact (log line, screenshot, or commit). Items 0 through 3 are the critical path — if any fails, pivot immediately, do not carry the risk to H10.
 
-1. **Cactus RN model slug for Gemma 4 E2B.** `await getRegistry()` on device; confirm exact slug (likely `gemma-4-e2b-it`). HF weights are cached at `models--Cactus-Compute--gemma-4-E2B-it`, so the Cactus-packaged build exists — we just need the registry key.
-2. **Tool calling returns `functionCalls` on Gemma 4 E2B.** One `CactusLM.complete({ messages, tools: HIPPO_TOOLS, toolRagTopK: 6 })` call where the message is *"did I take my pills?"* must produce `functionCalls[0].name === 'query_meds_today'`. If it doesn't, pivot to FunctionGemma-270m router (weights already cached) before H6.
-3. **Vision on Gemma 4 E2B.** `complete({ messages: [{ role: 'user', content: 'list objects', images: [jpg] }] })` must return a non-empty response. RN docs show the vision example using `lfm2-vl-450m`; confirm E2B also accepts `images`. If not, keep scene-tagging on a small vision model and pipe JSON into Gemma.
-4. **Audio-in to Gemma 4 E2B in a single call** — *deleted as MVP goal.* RN's `CactusLMMessage` exposes only `role`, `content`, `images`. We ship STT → text → LM. Drop any pitch line implying "Gemma hears directly."
-5. **RAM headroom on iPhone 17 Pro** — Gemma 4 E2B + Whisper-small + Silero VAD loaded concurrently. Target <6 GB peak on the 12 GB device. Read `ramUsageMb` from `CactusLMCompleteResult` as cheap continuous evidence.
-6. **Docked-mode always-on** — `UIBackgroundModes: audio` in Info.plist. Verify battery drain <15% over 30 min with screen on at min brightness.
-7. **Streaming TTS latency** — token → `AVSpeechSynthesizer` speaking within 250ms of first sentence boundary. `react-native-tts` `tts-start` fires within expected window.
+### 0. Patched SDK installs cleanly *(blocking, do first)*
+
+Copy `../military-medic/MedicApp/patches/cactus-react-native+1.13.0.patch` verbatim into the Hippocampus RN app's `patches/` dir, wire `"postinstall": "patch-package"` in `package.json`, run `npm install`. Then on device:
+
+```typescript
+const lm = new CactusLM({ model: 'gemma-4-e2b-it', options: { quantization: 'int4', pro: true } });
+await lm.download({ onProgress: p => console.log(`${(p*100)|0}%`) });
+await lm.init();
+```
+
+**Pass criterion:** download reaches 100 % and `init()` resolves. Artifact: log line showing 4.68 GB downloaded and model ready. Failure means the patch didn't apply — stop and fix; no other work can proceed.
+
+### 1. Airplane-mode flags actually suppress network
+
+Enable airplane mode on the iPhone. Run one `complete()` call with `{ telemetryEnabled: false, confidenceThreshold: 0 }`. Run a second call with *both defaults left on* as a control. Packet-sniff both on the network HUD laptop (Little Snitch or `tcpdump -i any host <iphone-ip>`).
+
+**Pass criterion:** with flags set, 0 bytes out. Without flags, non-zero bytes out (proves the flags are the mechanism, not a coincidence). Commit both pcap excerpts to `docs/verification/`.
+
+### 2. Tool calling returns `functionCalls[0].name === 'query_meds_today'`
+
+Using the six-tool schema and `toolRagTopK: 6`, send *"did I take my pills?"*. Pass criterion: exactly one function call, name matches, arguments parse as JSON. Run 20 phrasings of the same semantic intent; require ≥ 17/20 hits.
+
+**If fewer than 17/20:** pivot to FunctionGemma-270m as router + Gemma 4 E2B as responder now, not at H10. Port `../military-medic/tool_test.py`'s scoring loop; point it at `HIPPO_TOOLS` and our scenarios.
+
+### 3. Gemma 4 E2B vision via RN — the highest-risk unknown
+
+The Cactus RN docs only show the vision example on `lfm2-vl-450m`. No working code in either this repo or the sibling repo uses Gemma 4 E2B with `images: [path]`. **This must be empirically verified or the demo has no Beat 1 or Beat 2.**
+
+Test script: save one `640x480.jpg` of the kitchen scene. Call
+
+```typescript
+const r = await lm.complete({
+  messages: [{ role: 'user', content: 'List objects you see as JSON.', images: ['file:///.../640x480.jpg'] }],
+  tools: [],
+  telemetryEnabled: false,
+  confidenceThreshold: 0,
+});
+```
+
+**Pass criterion:** `r.response` references at least one real object from the photo, with no error. **Failure contingency:** keep scene-tagging on `lfm2-vl-450m` (which the docs do show working) and feed its JSON output as text into Gemma 4 E2B for language. Slower, two models loaded, but the demo survives.
+
+### 4. Margaret beat — `confusion_notes` enforcement
+
+With `admin_profile.json` loaded and the system prompt templated, send 20 phrasings of *"is Margaret coming today?"* / *"when will Margaret be here?"* / *"is my sister coming?"* at `temperature: 0`. Regex-assert the response contains neither `yes`, `today`, `tomorrow`, nor any confirmatory verb paired with Margaret. Also assert it contains a redirect (music, Sarah, a pleasant topic).
+
+**Pass criterion:** 20/20 pass. One failure is a demo-killer; re-tune the system prompt until clean. Commit the test log.
+
+### 5. Streaming STT ships confirmed tokens while user is still talking
+
+Using `streamTranscribeStart({ confirmationThreshold: 0.99, minChunkSize: 32000 })` feed a 4-second WAV in 500 ms PCM chunks via `streamTranscribeProcess`. Confirmed tokens should start appearing before the stream ends.
+
+**Pass criterion:** at least one `confirmed` token returned before `streamTranscribeStop()` is called. This is the difference between "VAD-gated turn-by-turn feel" and "walkie-talkie feel." If batch is measurably faster end-to-end on our utterance length, use batch and accept the ~400 ms turnaround.
+
+### 6. `prefill` warms the KV cache
+
+Call `lm.prefill({ messages: [{ role: 'system', content: SYSTEM_PROMPT }], tools: HIPPO_TOOLS })` once at startup. Measure `timeToFirstTokenMs` on the first user turn with vs. without prefill. Pass criterion: prefill cuts first-turn TTFT by ≥ 30 %. Otherwise leave it out — the MedicApp pattern assumes a win, we must measure ours.
+
+### 7. RAM headroom on iPhone 17 Pro
+
+Gemma 4 E2B + Whisper-small + Silero VAD loaded concurrently. Read `ramUsageMb` from `CactusLMCompleteResult` on every turn and log max. **Pass criterion: <6 GB peak across a 10-turn scripted conversation that includes vision + tool call + STT.** Target is <4 GB; the 6 GB ceiling is the thermal-throttle line.
+
+### 8. Docked-mode always-on
+
+`UIBackgroundModes: audio` in `Info.plist`, `react-native-keep-awake` installed and active. **Pass criterion:** app foregrounded on MagSafe for 30 min with screen at min brightness drops battery ≤ 15 % and does not audibly thermal-throttle the speaker.
+
+### 9. Streaming TTS latency
+
+First sentence boundary → `AVSpeechSynthesizer` speaking within 250 ms. `react-native-tts` `tts-start` event fires within expected window. Note: `../military-medic/MedicApp/src/services/TTSService.ts` is still a mock as of the last snapshot — we are not inheriting a working TTS layer and must budget 2–3 h to wire it.
+
+### 10. Network HUD tool chosen and tested
+
+Little Snitch (recommended) or `tcpdump -i any -nn`. Pass criterion: laptop screen visibly shows the iPhone's MAC with zero packets during a full 95-second demo walk-through.
+
+---
+
+## Part 14 — Judge Q&A pre-seed (rehearse these verbatim)
+
+Whoever does the pitch does the Q&A. Every teammate memorizes the same answer to each of these. Disagreement on stage is the fastest way to lose a close race.
+
+### Q1. "What if Helen doesn't ask? Dementia patients forget to initiate."
+
+> *"Reactive is the right layer for Helen. She doesn't have to learn new behavior — she just talks. The proactive layer is Sarah's: medication overdue, stove on past bedtime, wandering after quiet hours. That's v2, it's three crons and a push notification on top of the memory engine you just saw. We built the hard part first."*
+
+### Q2. "Where's the admin interface? Who configures this?"
+
+> *"In production, Sarah runs a five-minute onboarding on Helen's phone — same UX pattern as any modern health app, no complexity. For demo, we pre-authored the JSON file. The data shape **is** the product; the form-builder UI is a week of polish we didn't spend in 22 hours. What you saw was the behavior that file produces — which is what you'd fund."*
+
+### Q3. "What's the business model? How do you make money on a free-feeling voice assistant?"
+
+> *"We don't sell to Helen. We sell to Medicare Advantage plans and self-insured employers. CPT codes 99453 through 99458 reimburse fifty to one-sixty dollars per patient per month for Remote Patient Monitoring, and RPM billing requires a written care plan. Our profile **is** the care plan — plan-authored, device-enforced, outcome-reported. Seventy million Americans qualify. CAC is a referral from their neurologist; payback is month one."*
+
+### Q4. "Nothing leaves the phone sounds good, but don't you need the cloud for the hard stuff?"
+
+> *"The hard stuff is exactly why it can't touch the cloud. Helen's dead sister, her diagnosis, her late husband, what she asks about at 4am — none of this can be AWS's problem. Cactus gives us a 4B multimodal model running vision, voice, and tool-calling on a phone in airplane mode at sub-second latency. That wasn't possible six months ago. It is now. On-device is not a privacy checkbox; it's the only architecture that earns the trust this category requires."*
+
+### Q5. "Has this been tested with real dementia patients?"
+
+> *"Not yet. Our clinical advisor is [name or 'being onboarded']. Patient zero is [co-founder]'s grandmother, starting week three. We're running a six-patient pilot with [target: a Medicare Advantage plan or a memory-care facility] before the end of the quarter. We're not shipping blind — we're shipping to the person this is named for."*
+
+### Q6. "Couldn't Apple just build this?"
+
+> *"Apple has been promising personal context since 2011. They haven't shipped it because the model that makes it work — a 4B multimodal in airplane mode — arrived this year from a company with no phone of their own. We're not competing with Apple; we're the app they can't ship because they'd have to admit Siri couldn't. If they acquire us in year three, that's a fine outcome."*
+
+### Q7. "Isn't the Margaret beat just a system-prompt trick?"
+
+> *"The AI is in **not** answering. Every cloud assistant would either correct Helen — which is cruel — or hallucinate Margaret is on her way — which is dangerous. Hippo follows a one-line instruction her caregiver wrote. That's the product: clinical context, locally held, behaviorally enforced. Try getting Alexa to do that. Try getting it to keep the secret."*
+
+### Q8. "Does this cure Alzheimer's?" *(the question that kills you if you fumble it)*
+
+> *"No. Nothing cures Alzheimer's. Hippocampus is a prosthesis, not a treatment. What a hearing aid does for a failing cochlea, Hippocampus does for a failing hippocampus — it doesn't heal the organ, it externalizes the function. That distinction matters medically, legally, and morally. Medically, because we never promise Helen her memory back. Legally, because prosthetics have a durable medical equipment reimbursement path; treatment claims have an FDA one we don't have the data to clear. Morally, because every family in this room who's lived through this already knows the difference between help and hope, and we respect them enough to be honest about which we're offering."*
+
+### Q9. "Why structured SQLite retrieval instead of semantic RAG on Cactus?"
+
+> *"In a medical context, 'you took your pills at 12:40' is the right answer. 'You might have taken something around noon' is malpractice. Structured retrieval gives auditable facts; semantic retrieval gives plausible fiction. For dementia care, ground truth of *when* and *where* has to be exact — every inferred answer is flagged as such in the tool response, per the system prompt rules. We use Gemma 4 for language and tool-routing, SQLite for fact retrieval. Right tool for each job."*
+
+### Ground rules for Q&A delivery
+
+- **Never say "good question."** It's tell for "I don't have one."
+- **Never say "we're thinking about that."** Say what you'll do or say you cut it on purpose.
+- **Never apologize for what's cut.** The cuts are choices. "We deliberately didn't build X because Y" is strong; "we didn't have time" is weak.
+- **Redirect to the demo you just gave.** If a question is unanswerable, say: *"The shortest honest answer is: watch the Margaret beat again. That's the thesis."*
 
 ---
 
@@ -606,7 +773,8 @@ You asked how to persuade your team. Three things to communicate, in order:
 |---|---|
 | "We should build Medic, we have the spec" | "Medic is our real startup. Hippocampus is our hackathon. Different optimizations." |
 | "What about encryption, privacy is the pitch" | "Encryption protects against phone theft. Our pitch is 'nothing leaves the device,' which is architectural, not cryptographic. Judges won't ask. If they do, we say 'Day 2.'" |
-| "The second-phone digest was cool, why cut it" | "Because it breaks voice-first flow and adds a BLE surface we can't build in time. Voice-only digest delivers the same TAM expansion in one device." |
+| "The second-phone digest was cool, why cut it" | "Because it breaks voice-first flow and adds a BLE surface we can't build in time. The Margaret beat delivers the same TAM expansion — 'her daughter is the only person on earth who knows her mother still asks' — in one line, one device, zero new code." |
+| "Isn't the Margaret beat just a system-prompt trick? Where's the AI?" | "The AI is in *not* answering. Every cloud assistant would either correct Helen or hallucinate that Margaret is on her way. Hippo follows a one-line instruction written by a caregiver who knows her mother. That's the product: clinical context, locally enforced. Try getting Alexa to do it." |
 | "This isn't technically impressive enough" | "Native voice+vision+tool-calling in one forward pass on-device with <500ms response time on a phone IS the technical feat. DeepMind judges will see it instantly. We don't need more." |
 | "Dementia feels exploitative" | "Every caregiver I've talked to is desperate for this. Exploitative is putting a cloud camera in Grandma's kitchen. Respectful is giving her an answer to 'did I take my pills' without ever uploading her life." |
 | "Profile JSON isn't a real admin app" | "It's the DATA the admin app would produce. We're skipping the UI. The product is the file + the behavior it produces, which is what matters." |

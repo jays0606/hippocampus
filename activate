@@ -1,0 +1,19 @@
+#!/bin/bash
+# Activate the cactus venv for this project and load secrets.
+# Usage: source ./activate
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+    echo "Please run: source ./activate"
+    exit 1
+fi
+
+source /Users/jaehoshin/personal/yc-hackathon/cactus/venv/bin/activate
+
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -f "$PROJECT_ROOT/.env" ]; then
+    set -a
+    source "$PROJECT_ROOT/.env"
+    set +a
+    echo "✓ .env loaded (CACTUS_API_KEY, GEMINI_API_KEY)"
+fi
+
+echo "✓ cactus venv active. Try: cactus list"

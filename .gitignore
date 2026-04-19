@@ -1,0 +1,30 @@
+# Secrets
+.env
+.env.*
+!.env.example
+
+# OMC / browser state
+.omc/
+.openchrome/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.venv/
+venv/
+
+# macOS
+.DS_Store
+
+# Editor
+.vscode/
+.idea/
+*.swp
+
+# Models / weights (keep out of git; stored in ~/personal/yc-hackathon/cactus/weights)
+weights/
+*.gguf
+*.safetensors
+*.mlpackage

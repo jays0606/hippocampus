@@ -1,0 +1,63 @@
+{
+  "user": {
+    "name": "Helen",
+    "preferred_name": "Helen",
+    "age": 79,
+    "diagnosis": "Mid-stage Alzheimer's, diagnosed 2023",
+    "allergies": ["penicillin"],
+    "dnr": false
+  },
+
+  "medications": [
+    {
+      "name": "Donepezil 10mg",
+      "schedule": "daily 08:00",
+      "location": "kitchen cabinet, white bottle",
+      "purpose": "Alzheimer's — slows progression"
+    },
+    {
+      "name": "Lisinopril 5mg",
+      "schedule": "daily 08:00",
+      "location": "kitchen cabinet, white bottle",
+      "purpose": "blood pressure"
+    }
+  ],
+
+  "doctors": [
+    { "name": "Dr. Chen", "specialty": "Neurologist", "phone": "555-0123" },
+    { "name": "Dr. Park", "specialty": "Primary care", "phone": "555-0456" }
+  ],
+
+  "family": [
+    { "name": "Sarah", "relationship": "daughter", "phone": "555-0789", "is_caregiver": true },
+    { "name": "Robert", "relationship": "son", "phone": "555-0234" },
+    { "name": "Margaret", "relationship": "sister", "deceased": true, "deceased_year": 2019 }
+  ],
+
+  "confusion_notes": [
+    "Sometimes asks about Margaret — do not confirm or deny she's coming, gently redirect.",
+    "Confuses Sarah (daughter) with Margaret (late sister) in the afternoon.",
+    "Becomes agitated if asked 'do you remember' — avoid that phrasing."
+  ],
+
+  "triggers": {
+    "agitation": ["loud TV", "multiple voices at once"],
+    "comfort": ["classical music", "Sarah's voice"]
+  },
+
+  "home": {
+    "rooms_private": ["bathroom", "bedroom"],
+    "rooms_monitored": ["kitchen", "living_room", "hallway"],
+    "quiet_hours": { "start": "22:00", "end": "07:00" }
+  },
+
+  "tracked_objects": [
+    "keys", "glasses", "pill_bottle", "mug", "phone", "wallet", "remote"
+  ],
+
+  "digest": {
+    "enabled": true,
+    "time": "20:00",
+    "recipient_name": "Sarah"
+  }
+}

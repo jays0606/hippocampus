@@ -28,3 +28,6 @@ weights/
 *.gguf
 *.safetensors
 *.mlpackage
+
+# RN scaffolds — committed separately in Phase B
+apps/HippocampusApp/

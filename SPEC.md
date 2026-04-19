@@ -105,10 +105,12 @@ v1 had a second phone showing a notification. v2 has Hippo speaking the digest d
 
 ### IN for MVP
 
-- Voice I/O: `CactusSTT` + Silero VAD in, streaming `AVSpeechSynthesizer` premium out
-- Gemma 4 E2B loaded via Cactus, native function calling
+- Voice I/O: `CactusSTT` (Whisper-small) + `CactusAudio` Silero VAD in; iOS native `AVSpeechSynthesizer` premium voice out via `react-native-tts` bridge (sentence-buffered)
+- Gemma 4 E2B loaded via `CactusLM` (RN), tool calling with **`toolRagTopK: 6`** so all six Hippo tools are visible every turn (RN default is 2 — would silently hide 4 of our tools)
+- Camera frames via `react-native-vision-camera` (2fps), passed as `images: [path]` to `CactusLM.complete({...})`
+- SSIM change-detector in JS / native util (not a Cactus feature)
 - **Caregiver profile** (JSON file, loaded at startup) — new in v2
-- `memory.db` as plain SQLite (not encrypted)
+- `memory.db` as plain SQLite (not encrypted) — **not** `CactusIndex`/`cactusRagQuery`, because Hippo queries are structured-exact, not semantic
 - Live vision loop writing to memory during demo
 - Pre-seeded memory from 30-min pre-demo observation
 - Six memory tools (spec'd below)
@@ -431,7 +433,13 @@ CREATE TABLE meds_schedule (
 
 ## Part 10 — Tool schema (final, 6 tools)
 
-Gemma 4 E2B native function calling. No FunctionGemma. No router model.
+Gemma 4 E2B native function calling via `CactusLM.complete({ messages, tools, toolRagTopK: 6 })`.
+
+**`toolRagTopK: 6` is load-bearing** — the RN SDK default is 2, which picks the two embedding-closest tools and silently hides the rest. Without this override, `query_meds_today` can vanish from the tool list on a prompt the embedding happens to score lower. Pass all six every turn.
+
+**Contingency if Gemma 4 E2B tool calling is unreliable on Cactus RN** (to be verified at H0): switch to a two-model setup — FunctionGemma-270m as router emitting the tool call, Gemma 4 E2B as responder composing natural language. Weights for both are already cached. Do not discover this at H10.
+
+No web RAG. No router model in the happy path.
 
 ```typescript
 export const HIPPO_TOOLS = [
@@ -525,7 +533,7 @@ RULES:
 | **A** | Voice I/O — STT + VAD + TTS + mic gating | 1 eng | 4h | Audio in → confirmed transcript. Streaming response → premium TTS. Mic pauses while speaking. Zero echo. |
 | **B** | Perception writer — vision → memory | 1 eng | 5h | Camera 2fps → SSIM change-detect → Gemma 4 scene tag → memory.db writes. |
 | **C** | Memory store + 6 tools | 1 eng | 3h | `memory.db` schema created. All 6 tools return correct data. Merge rules unit-tested. |
-| **D** | Voice agent core — Gemma 4 E2B loader + tool loop + system prompt + **profile loader** | 1 eng | 6h | Gemma 4 E2B loaded. Profile JSON parsed into prompt + seeded into memory.db. Full voice-in → tool-call → voice-out loop running. **Assign strongest engineer.** |
+| **D** | Voice agent core — Gemma 4 E2B loader + tool loop (`toolRagTopK: 6`) + system prompt + **profile loader** | 1 eng | 6h | Gemma 4 E2B loaded via `CactusLM` RN. Profile JSON parsed into prompt + seeded into memory.db. Full STT → `complete()` → tool call → tool response → follow-up `complete()` → `react-native-tts` voice-out loop running. **H0 smoke test: confirm `functionCalls` fires and `images` works on Gemma 4 E2B; if tool calling is unreliable, pivot to FunctionGemma-270m router.** **Assign strongest engineer.** |
 | **E** | Demo UI + network HUD + docked mode | 1 eng | 3h | App foregrounds on dock. LISTENING animation. HUD shows zero bytes. Airplane mode verified. |
 | **F** | Profile authoring + pitch deck + rehearsal support | folded into D or separate | 1h | `admin_profile.json` authored for demo. Opening + closing memorized. |
 
@@ -561,10 +569,15 @@ RULES:
 
 ## Part 13 — Verification items (clear by H2)
 
-1. **Audio-in on Gemma 4 E2B via RN SDK** — per Cactus docs for Python/Flutter/Apple/Rust, `audio: [path]` is supported on messages. RN exposure unclear. **Ask Cactus team at H0.** Fallback: STT → text → LM. Works.
-2. **RAM headroom on iPhone 17 Pro** — target <6 GB peak on 12 GB device.
-3. **Docked-mode always-on** — `UIBackgroundModes: audio` in Info.plist. Verify battery drain over 30 min.
-4. **Concurrent vision + voice in single Gemma 4 call** — verify from Cactus examples at H0.
+Each item must produce a real artifact (log line, screenshot, or commit) before H2 closes.
+
+1. **Cactus RN model slug for Gemma 4 E2B.** `await getRegistry()` on device; confirm exact slug (likely `gemma-4-e2b-it`). HF weights are cached at `models--Cactus-Compute--gemma-4-E2B-it`, so the Cactus-packaged build exists — we just need the registry key.
+2. **Tool calling returns `functionCalls` on Gemma 4 E2B.** One `CactusLM.complete({ messages, tools: HIPPO_TOOLS, toolRagTopK: 6 })` call where the message is *"did I take my pills?"* must produce `functionCalls[0].name === 'query_meds_today'`. If it doesn't, pivot to FunctionGemma-270m router (weights already cached) before H6.
+3. **Vision on Gemma 4 E2B.** `complete({ messages: [{ role: 'user', content: 'list objects', images: [jpg] }] })` must return a non-empty response. RN docs show the vision example using `lfm2-vl-450m`; confirm E2B also accepts `images`. If not, keep scene-tagging on a small vision model and pipe JSON into Gemma.
+4. **Audio-in to Gemma 4 E2B in a single call** — *deleted as MVP goal.* RN's `CactusLMMessage` exposes only `role`, `content`, `images`. We ship STT → text → LM. Drop any pitch line implying "Gemma hears directly."
+5. **RAM headroom on iPhone 17 Pro** — Gemma 4 E2B + Whisper-small + Silero VAD loaded concurrently. Target <6 GB peak on the 12 GB device. Read `ramUsageMb` from `CactusLMCompleteResult` as cheap continuous evidence.
+6. **Docked-mode always-on** — `UIBackgroundModes: audio` in Info.plist. Verify battery drain <15% over 30 min with screen on at min brightness.
+7. **Streaming TTS latency** — token → `AVSpeechSynthesizer` speaking within 250ms of first sentence boundary. `react-native-tts` `tts-start` fires within expected window.
 
 ---
 

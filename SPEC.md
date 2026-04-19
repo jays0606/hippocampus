@@ -294,7 +294,7 @@ Important notes from Sarah:
   today" or "a little while ago" instead.
 ```
 
-**In tool responses:** the `query_family` tool reads from profile. The `call_family` tool reads phone numbers from profile. The `query_meds_today` tool joins profile's medication list with `memory.db`'s events table to determine what's due and what's been observed.
+**In tool responses:** the `query_meds_today` tool joins profile's medication list with `memory.db`'s events table to determine what's due and what's been observed. Family/doctor data is templated into the system prompt directly at startup — no runtime tool needed for Beat 2 or Beat 3, and adding family-lookup tools would push the tool count past the `toolRagTopK: 6` window.
 
 ### Why this is the fifth essential feature
 
@@ -504,7 +504,10 @@ You speak only in voice. You are warm, brief, and honest.
 
 USER CONTEXT (from caregiver profile):
 {{profile.user.name}} is {{profile.user.age}} years old with
-{{profile.user.diagnosis}}. Her caregiver is {{profile.family.caregiver_name}}.
+{{profile.user.diagnosis}}. Her caregiver is {{caregiver.name}} (daughter).
+(The loader resolves `caregiver` at startup as the single `family[]` entry
+with `is_caregiver: true`. Do not template `profile.family.caregiver_name` —
+no such field exists.)
 
 NOTES FROM HER CAREGIVER — these override your defaults:
 {{#each profile.confusion_notes}}
@@ -543,7 +546,7 @@ RULES:
 
 | Hours | Phase | Deliverable |
 |---|---|---|
-| H0–H2 | **Bootstrap** | Cactus installed. Gemma 4 E2B downloaded on all MacBooks. `contracts.ts` frozen. `admin_profile.json` authored. Demo script locked. |
+| H0–H2 | **Bootstrap + RN parity smoke test** | Cactus installed. Gemma 4 E2B downloaded on all MacBooks. `contracts.ts` frozen. `admin_profile.json` authored. Demo script locked. **Part 13 verifications 1–3 complete: registry slug confirmed via `getRegistry()`, `functionCalls` fires on Gemma 4 E2B with `toolRagTopK: 6`, vision `images:[path]` works on E2B. Artifacts committed.** If (2) fails → trigger FunctionGemma-270m router pivot now, not at H6. |
 | H2–H6 | **Parallel stubs** | Everyone builds against stubs. Hello-world end-to-end by H6: hardcoded text → voice response. |
 | H6–H10 | **Real tools, real profile** | C delivers all tools against seeded memory.db. D wires profile + tools into Gemma 4 E2B. First real beat: "where are my glasses" works via voice. |
 | **H10 Checkpoint 1** | | If beat 1 doesn't work by H10, drop workstream B entirely; pre-seed everything. |

@@ -27,16 +27,20 @@ USER = "Hey Hippo — where are my glasses?"
 
 
 def main():
-    print(f"[1/3] Ensuring model weights: {MODEL_ID}")
-    weights_dir = ensure_model(MODEL_ID)
-    print(f"      weights_dir = {weights_dir}")
-
-    print("[2/3] Loading model into cactus engine...")
-    t0 = time.time()
-    model = cactus_init(str(weights_dir), None, False)
-    print(f"      loaded in {time.time() - t0:.2f}s")
-
+    model = None
     try:
+        print(f"[1/3] Ensuring model weights: {MODEL_ID}")
+        weights_dir = ensure_model(MODEL_ID)
+        print(f"      weights_dir = {weights_dir}")
+
+        print("[2/3] Loading model into cactus engine...")
+        t0 = time.time()
+        model = cactus_init(str(weights_dir), None, False)
+        if not model:
+            print(f"ERROR: cactus_init returned {model!r}", file=sys.stderr)
+            sys.exit(1)
+        print(f"      loaded in {time.time() - t0:.2f}s")
+
         print("[3/3] Running Hippocampus scenario completion...")
         messages = json.dumps([
             {"role": "system", "content": SYSTEM},
@@ -55,10 +59,11 @@ def main():
         print(f"success={result.get('success')}  elapsed={elapsed:.2f}s")
 
         if not result.get("success"):
-            print(f"ERROR: {result}")
+            print(f"ERROR: {result}", file=sys.stderr)
             sys.exit(1)
     finally:
-        cactus_destroy(model)
+        if model is not None:
+            cactus_destroy(model)
 
 
 if __name__ == "__main__":
